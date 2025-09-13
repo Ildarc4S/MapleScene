@@ -62,9 +62,9 @@ Vertex := module()
     new_y := x*(cosY*sinZ) + y*(cosX*cosZ + sinX*sinY*sinZ) + z*(cosX*sinY*sinZ - cosZ*sinX);
     new_z := x*(-sinY) + y*(cosY*sinX) + z*(cosX*cosY);
 
-    x := new_x;
-    y := new_y;
-    z := new_z;
+    x := evalf(new_x);
+    y := evalf(new_y);
+    z := evalf(new_z);
 
   end proc;
 
@@ -251,7 +251,7 @@ Mesh := module()
   proc(dx::numeric, dy::numeric, dz::numeric)
     local i;
     for i from 1 to nops(vertices) do
-      vertices[i]:-translate(dx, dy, dz);
+      vertices[i]:-Translate(dx, dy, dz);
     end do;
   end proc;
 
@@ -319,6 +319,24 @@ Modifiers := module()
   proc(obj::Mesh, count::posint,
        dx::numeric, dy::numeric, dz::numeric)
     local i, meshes, current_mesh;
+
+    if count < 1 then
+      error "Count must be positive integer";
+    end if;
+
+    if dx = 0 and dy = 0 and dz = 0 then
+      error "Offset cannot be zero in all directions";
+    end if;
+
+    meshes := [obj];
+
+    for i from 1 to count do
+      current_mesh := obj:-Copy();
+      current_mesh:-Translate(dx*i, dy*i, dz*i);
+      meshes := [op(meshes), current_mesh];
+    end do;
+
+    return meshes;
   end proc;
 
 end module;
@@ -329,4 +347,8 @@ Cube:-Display();
 Cube:-Rotate(0, 30, 30);
 Cube:-Display();
 
-Modifiers:-Array(Cube, 2, 1, 0, 0);
+cubes := Modifiers:-Array(Cube, 2, 0.1, 0, 0);
+
+for i from 1 to nops(cubes) do
+  cubes[i]:-Display();
+end do;
