@@ -9,12 +9,10 @@ Vertex := module()
   export ModuleApply :: static :=
   proc(x::numeric, y::numeric, z::numeric)
     local self;
-
     self := Object(Vertex);
     self:-x := x;
     self:-y := y;
     self:-z := z;
-
     return self;
   end proc;
 
@@ -101,8 +99,8 @@ Edge := module()
   proc(vertex_one::Vertex, vertex_two::Vertex)
     local self;
     self := Object(Edge);
-    self :-vertex_one := vertex_one;
-    self :-vertex_two := vertex_two;
+    self:-vertex_one := vertex_one;
+    self:-vertex_two := vertex_two;
     return self;
   end proc;
 
@@ -139,7 +137,7 @@ Face := module()
   export ModuleApply :: static :=
   proc(vertices::list)
     local self;
-    self := Object(Face);
+    self:= Object(Face);
     self:-vertices := vertices;
     return self;
   end proc;
@@ -215,16 +213,25 @@ Mesh := module()
 
   export Copy :=
   proc()
-    local i, copied_vertices, copied_faces;
+    local i, copied_vertices, copied_faces, vertex_map, old_face, new_face_vertices, j;
 
     copied_vertices := [];
+    vertex_map := table();
+
     for i from 1 to nops(vertices) do
       copied_vertices := [op(copied_vertices), vertices[i]:-Copy()];
+      vertex_map[vertices[i]] := copied_vertices[i];
     end do;
 
     copied_faces := [];
     for i from 1 to nops(faces) do
-      copied_faces := [op(copied_faces), faces[i]:-Copy()];
+      old_face := faces[i];
+      new_face_vertices := [];
+
+      for j from 1 to nops(old_face:-vertices) do
+        new_face_vertices := [op(new_face_vertices), vertex_map[old_face:-vertices[j]]];
+      end do;
+      copied_faces := [op(copied_faces), Face(new_face_vertices)];
     end do;
 
     return Mesh(copied_vertices, copied_faces);
@@ -341,14 +348,42 @@ Modifiers := module()
 
 end module;
 
-Cube := PrimitiveFactory:-CreateCube();
+Scene := module()
+  option object;
 
-Cube:-Display();
-Cube:-Rotate(0, 30, 30);
-Cube:-Display();
+  export objects;
 
-cubes := Modifiers:-Array(Cube, 2, 0.1, 0, 0);
+  export ModuleApply :: static :=
+  proc(objs::list)
+    local self;
+    self := Object(Scene);
+    self:-objects := objs;
+    return self;
+  end proc;
 
-for i from 1 to nops(cubes) do
-  cubes[i]:-Display();
-end do;
+  export AddObject :=
+  proc(obj::Mesh)
+    objects := [op(objects), obj];
+  end proc;
+
+  export AddObjects :=
+  proc(objs::list)
+    objects := [op(objects), op(objs)];
+  end proc;
+
+  export Display :=
+  proc(surface_color::string := "green")
+    local i, all_surfaces;
+    all_surfaces := [];
+    for i from 1 to nops(objects) do
+      all_surfaces := [op(all_surfaces), op(objects[i]:-CreateSurface(surface_color))];
+    end do;
+    plots:-display(all_surfaces, scaling=constrained);
+  end proc;
+
+end module;
+
+cube1 := PrimitiveFactory:-CreateCube():
+cubes := Modifiers:-Array(cube1, 2, 2, 0, 0):
+s := Scene(cubes):
+s:-Display();
