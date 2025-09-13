@@ -296,14 +296,14 @@ PrimitiveFactory := module()
     local half_size, vertices, faces;
     half_size := size / 2;
     vertices := [
-      Vertex(center[1] - half_size, center[2] - half_size, center[3] - half_size), # 1: задний-нижний-левый
-      Vertex(center[1] + half_size, center[2] - half_size, center[3] - half_size), # 2: задний-нижний-правый
-      Vertex(center[1] + half_size, center[2] + half_size, center[3] - half_size), # 3: задний-верхний-правый
-      Vertex(center[1] - half_size, center[2] + half_size, center[3] - half_size), # 4: задний-верхний-левый
-      Vertex(center[1] - half_size, center[2] - half_size, center[3] + half_size), # 5: передний-нижний-левый
-      Vertex(center[1] + half_size, center[2] - half_size, center[3] + half_size), # 6: передний-нижний-правый
-      Vertex(center[1] + half_size, center[2] + half_size, center[3] + half_size), # 7: передний-верхний-правый
-      Vertex(center[1] - half_size, center[2] + half_size, center[3] + half_size)  # 8: передний-верхний-левый
+      Vertex(center[1] - half_size, center[2] - half_size, center[3] - half_size),
+      Vertex(center[1] + half_size, center[2] - half_size, center[3] - half_size),
+      Vertex(center[1] + half_size, center[2] + half_size, center[3] - half_size),
+      Vertex(center[1] - half_size, center[2] + half_size, center[3] - half_size),
+      Vertex(center[1] - half_size, center[2] - half_size, center[3] + half_size),
+      Vertex(center[1] + half_size, center[2] - half_size, center[3] + half_size),
+      Vertex(center[1] + half_size, center[2] + half_size, center[3] + half_size),
+      Vertex(center[1] - half_size, center[2] + half_size, center[3] + half_size)
     ];
 
     faces := [
@@ -317,6 +317,78 @@ PrimitiveFactory := module()
 
     return Mesh(vertices, faces);
   end proc;
+
+  export CreateCylinder :=
+  proc(center::list := [0, 0, 0], radius::numeric := 0.5, height::numeric := 1, segments::integer := 12)
+    local i, angle, vertices, faces, top_vertices, bottom_vertices;
+    local x, y, z_top, z_bottom, next_i;
+
+    vertices := [];
+    faces := [];
+    top_vertices := [];
+    bottom_vertices := [];
+
+    z_top := center[3] + height/2;
+    z_bottom := center[3] - height/2;
+
+    for i from 0 to segments-1 do
+      angle := 2 * Pi * i / segments;
+      x := evalf(center[1] + radius * cos(angle));
+      y := evalf(center[2] + radius * sin(angle));
+
+      top_vertices := [op(top_vertices), Vertex(x, y, z_top)];
+      bottom_vertices := [op(bottom_vertices), Vertex(x, y, z_bottom)];
+    end do;
+
+    vertices := [op(top_vertices), op(bottom_vertices)];
+    faces := [op(faces), Face(top_vertices)];
+    faces := [op(faces), Face(bottom_vertices)];
+
+    for i from 1 to segments do
+      next_i := i mod segments + 1;
+      faces := [op(faces), Face([
+          top_vertices[i],
+          top_vertices[next_i],
+          bottom_vertices[next_i],
+          bottom_vertices[i]
+        ])];
+    end do;
+
+    return Mesh(vertices, faces);
+  end proc;
+
+  export CreateCircle :=
+  proc(center::list := [0, 0, 0], radius::numeric := 1, segments::integer := 16, plane::string := "xy")
+    local i, angle, vertices, face, x, y, z;
+
+    vertices := [];
+
+    for i from 0 to segments-1 do
+      angle := 2 * Pi * i / segments;
+
+      if plane = "xy" then
+        x := center[1] + radius * cos(angle);
+        y := center[2] + radius * sin(angle);
+        z := center[3];
+      elif plane = "xz" then
+        x := center[1] + radius * cos(angle);
+        y := center[2];
+        z := center[3] + radius * sin(angle);
+      elif plane = "yz" then
+        x := center[1];
+        y := center[2] + radius * cos(angle);
+        z := center[3] + radius * sin(angle);
+      else
+        error "Plane must be 'xy', 'xz', or 'yz'";
+      end if;
+
+      vertices := [op(vertices), Vertex(evalf(x), evalf(y), evalf(z))];
+    end do;
+
+    face := Face(vertices);
+    return Mesh(vertices, [face]);
+  end proc;
+
 end module;
 
 Modifiers := module()
@@ -383,7 +455,9 @@ Scene := module()
 
 end module;
 
-cube1 := PrimitiveFactory:-CreateCube():
-cubes := Modifiers:-Array(cube1, 2, 2, 0, 0):
-s := Scene(cubes):
-s:-Display();
+scene := Scene([]):
+scene:-AddObject(PrimitiveFactory:-CreateCircle([0,0,0], 1, 5));
+cy := PrimitiveFactory:-CreateCylinder();
+cy:-Rotate(0, 40, 0);
+scene:-AddObject(cy);
+scene:-Display();
