@@ -318,45 +318,6 @@ PrimitiveFactory := module()
     return Mesh(vertices, faces);
   end proc;
 
-  export CreateCylinder :=
-  proc(center::list := [0, 0, 0], radius::numeric := 0.5, height::numeric := 1, segments::integer := 12)
-    local i, angle, vertices, faces, top_vertices, bottom_vertices;
-    local x, y, z_top, z_bottom, next_i;
-
-    vertices := [];
-    faces := [];
-    top_vertices := [];
-    bottom_vertices := [];
-
-    z_top := center[3] + height/2;
-    z_bottom := center[3] - height/2;
-
-    for i from 0 to segments-1 do
-      angle := 2 * Pi * i / segments;
-      x := evalf(center[1] + radius * cos(angle));
-      y := evalf(center[2] + radius * sin(angle));
-
-      top_vertices := [op(top_vertices), Vertex(x, y, z_top)];
-      bottom_vertices := [op(bottom_vertices), Vertex(x, y, z_bottom)];
-    end do;
-
-    vertices := [op(top_vertices), op(bottom_vertices)];
-    faces := [op(faces), Face(top_vertices)];
-    faces := [op(faces), Face(bottom_vertices)];
-
-    for i from 1 to segments do
-      next_i := i mod segments + 1;
-      faces := [op(faces), Face([
-          top_vertices[i],
-          top_vertices[next_i],
-          bottom_vertices[next_i],
-          bottom_vertices[i]
-        ])];
-    end do;
-
-    return Mesh(vertices, faces);
-  end proc;
-
   export CreateCircle :=
   proc(center::list := [0, 0, 0], radius::numeric := 1, segments::integer := 16, plane::string := "xy")
     local i, angle, vertices, face, x, y, z;
@@ -389,6 +350,32 @@ PrimitiveFactory := module()
     return Mesh(vertices, [face]);
   end proc;
 
+  export CreateCylinder :=
+  proc(center::list := [0, 0, 0], radius::numeric := 0.5, height::numeric := 1, segments::integer := 12)
+    local top_center, bottom_center, top_circle, bottom_circle, vertices, faces, i, next_i;
+
+    top_center := [center[1], center[2], center[3] + height/2];
+    bottom_center := [center[1], center[2], center[3] - height/2];
+
+    top_circle := CreateCircle(top_center, radius, segments, plane="xy");
+    bottom_circle := CreateCircle(bottom_center, radius, segments, plane="xy");
+
+    vertices := [op(top_circle:-vertices), op(bottom_circle:-vertices)];
+    faces := [op(top_circle:-faces), op(bottom_circle:-faces)];
+
+    for i from 1 to segments do
+      next_i := i mod segments + 1;
+      faces := [op(faces), Face([
+          top_circle:-vertices[i],
+          top_circle:-vertices[next_i],
+          bottom_circle:-vertices[next_i],
+          bottom_circle:-vertices[i]
+      ])];
+    end do;
+
+    return Mesh(vertices, faces);
+  end proc;
+
 end module;
 
 Modifiers := module()
@@ -418,6 +405,74 @@ Modifiers := module()
     return meshes;
   end proc;
 
+  export SubdivideFaceQuadMidEdges :=
+  proc(face::Face)
+    local v1, v2, v3, v4, new_faces, center, mid12, mid23, mid34, mid41;
+
+    if nops(face:-vertices) <> 4 then
+        error "Face must have exactly 4 vertices";
+    end if;
+
+    v1 := face:-vertices[1];
+    v2 := face:-vertices[2];
+    v3 := face:-vertices[3];
+    v4 := face:-vertices[4];
+
+    mid12 := Vertex((v1:-x + v2:-x)/2, (v1:-y + v2:-y)/2, (v1:-z + v2:-z)/2);  # середина v1-v2
+    mid23 := Vertex((v2:-x + v3:-x)/2, (v2:-y + v3:-y)/2, (v2:-z + v3:-z)/2);  # середина v2-v3
+    mid34 := Vertex((v3:-x + v4:-x)/2, (v3:-y + v4:-y)/2, (v3:-z + v4:-z)/2);  # середина v3-v4
+    mid41 := Vertex((v4:-x + v1:-x)/2, (v4:-y + v1:-y)/2, (v4:-z + v1:-z)/2);  # середина v4-v1
+    center := Vertex(
+      (v1:-x + v2:-x + v3:-x + v4:-x)/4,
+      (v1:-y + v2:-y + v3:-y + v4:-y)/4,
+      (v1:-z + v2:-z + v3:-z + v4:-z)/4
+    );
+    new_faces := [
+      Face([v1, mid12, center, mid41]),      # Нижний левый квадрат
+      Face([mid12, v2, mid23, center]),      # Нижний правый квадрат
+      Face([center, mid23, v3, mid34]),      # Верхний правый квадрат
+      Face([mid41, center, mid34, v4])       # Верхний левый квадрат
+    ];
+
+    return new_faces;
+  end proc;
+
+  export SubdivideMeshQuads :=
+  proc(mesh::Mesh)
+    local i, face, new_faces, new_vertices_set, new_vertices, subdivided, f, v, key;
+
+    new_faces := [];
+    new_vertices_set := table();
+
+    for i from 1 to nops(mesh:-vertices) do
+      new_vertices_set[mesh:-vertices[i]] := mesh:-vertices[i];
+    end do;
+
+    for i from 1 to nops(mesh:-faces) do
+      face := mesh:-faces[i];
+      if nops(face:-vertices) = 4 then
+        subdivided := SubdivideFaceQuadMidEdges(face);
+
+        for f in subdivided do
+          for v in f:-vertices do
+            if not assigned(new_vertices_set[v]) then
+              new_vertices_set[v] := v;
+            end if;
+          end do;
+          new_faces := [op(new_faces), f];
+        end do;
+      else
+        new_faces := [op(new_faces), face];
+      end if;
+    end do;
+
+    new_vertices := [];
+    for key in indices(new_vertices_set) do
+      new_vertices := [op(new_vertices), new_vertices_set[key]];
+    end do;
+
+    return Mesh(new_vertices, new_faces);
+  end proc;
 end module;
 
 Scene := module()
@@ -456,8 +511,9 @@ Scene := module()
 end module;
 
 scene := Scene([]):
-scene:-AddObject(PrimitiveFactory:-CreateCircle([0,0,0], 1, 5));
-cy := PrimitiveFactory:-CreateCylinder();
-cy:-Rotate(0, 40, 0);
-scene:-AddObject(cy);
+
+mesh := PrimitiveFactory:-CreateCube();
+subdivided_mesh := Modifiers:-SubdivideMeshQuads(mesh);
+subdivided_mesh := Modifiers:-SubdivideMeshQuads(subdivided_mesh);
+scene:-AddObject(subdivided_mesh);
 scene:-Display();
